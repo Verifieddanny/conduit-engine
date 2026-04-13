@@ -207,6 +207,8 @@ src/
 
 **Danny (DevDanny)** -- [@dannyclassi_c](https://x.com/dannyclassi_c)
 
-Part of a 100-day backend engineering journey. Conduit is Project 4 -- built to learn Redis, BullMQ, background workers, and production-grade webhook infrastructure.
+## LIiscence
+
+MIT
 
 Previous projects: [URL Shortener](https://github.com/Verifieddanny/url-shortener) | [NexusChat](https://github.com/Verifieddanny/chat-app-BE) | [Shipyard](https://github.com/Verifieddanny/cicd-engine)
