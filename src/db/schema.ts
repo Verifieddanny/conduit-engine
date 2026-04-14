@@ -8,7 +8,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 
 export const StatusEnum = pgEnum("status", [
   "active",
@@ -19,7 +19,7 @@ export const callbackEnum = pgEnum("callback_status", [
 ]);
 
 export const userTable = pgTable("user", {
-  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  id: text('id').primaryKey().default(sql`gen_random_uuid()`),
   username: varchar("username", { length: 255 }).notNull().unique(),
   email: varchar("email", { length: 255 }).notNull().unique(),
   password: varchar("password").notNull(),
@@ -29,13 +29,13 @@ export const userTable = pgTable("user", {
 });
 
 export const endpointTable = pgTable("endpoint", {
-  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  id: text('id').primaryKey().default(sql`gen_random_uuid()`),
   endpointPath: text("endpoint_path").notNull(),
   secret: varchar("secret").notNull(),
   status: StatusEnum("status").notNull().default("active"),
   subscribedEvent: text("subscribed_event").array().notNull(),
   externalSource: text("external_source").notNull(),
-  userId: bigint("user_id", { mode: "number" })
+  userId: text("user_id")
     .notNull()
     .references(() => userTable.id, { onDelete: "cascade" }),
 
@@ -44,7 +44,7 @@ export const endpointTable = pgTable("endpoint", {
 });
 
 export const callbackTable = pgTable("callback", {
-  id: bigint("id", { mode: "number" }).primaryKey().generatedAlwaysAsIdentity(),
+  id: text('id').primaryKey().default(sql`gen_random_uuid()`),
   status: callbackEnum("status").notNull().default("pending"),
   responseCode: varchar("response_code"),
   responseBody: text("response_body"),
@@ -52,7 +52,7 @@ export const callbackTable = pgTable("callback", {
   nextRetry: timestamp("next_retry", { withTimezone: true, mode: "string" }),
   payload: text("payload"),
   eventType: varchar("event_type").notNull(),
-  endpointId: bigint("endpoint_id", { mode: "number" }).notNull().references(() => endpointTable.id, { onDelete: "cascade" }),
+  endpointId: text("endpoint_id").notNull().references(() => endpointTable.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
