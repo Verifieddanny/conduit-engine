@@ -137,7 +137,7 @@ export const getApiKey = async (req: AuthRequest, res: Response, next: NextFunct
 
         const updatedUser = await db.update(userTable).set({
             apiKey: hashedApiKey
-        }).where(eq(userTable.id, Number(userId)))
+        }).where(eq(userTable.id, userId))
 
         if (!updatedUser) {
             const error: CustomError = new Error("Failed to create API KEY");

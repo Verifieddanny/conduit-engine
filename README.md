@@ -47,17 +47,20 @@ External Service (Stripe, GitHub, etc.)
 - **ORM:** Drizzle ORM
 - **Queue:** Redis + BullMQ (coming soon)
 - **Auth:** JWT (session) + SHA-256 hashed API keys (programmatic access)
+- **Encryption:** AES-256-GCM (endpoint secrets)
 - **Payload Signing:** HMAC-SHA256
 - **Validation:** express-validator
 
 ## Current Progress
 
 - [x] Project setup (Bun + TypeScript + Express 5)
-- [x] PostgreSQL database with Drizzle ORM schema
+- [x] PostgreSQL database with Drizzle ORM schema (UUID primary keys)
 - [x] User registration and login (bcrypt + JWT)
+- [x] Input validation (express-validator)
 - [x] API key generation with SHA-256 hashing (`cdt_` prefixed keys)
 - [x] API key authentication middleware
-- [ ] Endpoint CRUD (register, update, delete, list)
+- [x] AES-256-GCM encryption service (for endpoint secrets)
+- [x] Endpoint CRUD (create, list, update, delete with ownership verification)
 - [ ] Inbound event receiver
 - [ ] Redis + BullMQ integration
 - [ ] Background worker for delivery
@@ -74,7 +77,7 @@ External Service (Stripe, GitHub, etc.)
 
 | Field | Type | Details |
 |-------|------|---------|
-| id | bigint | Primary key, auto-generated |
+| id | uuid | Primary key, auto-generated |
 | username | varchar(255) | Unique |
 | email | varchar(255) | Unique |
 | password | varchar | bcrypt hashed |
@@ -86,13 +89,13 @@ External Service (Stripe, GitHub, etc.)
 
 | Field | Type | Details |
 |-------|------|---------|
-| id | bigint | Primary key, auto-generated |
+| id | uuid | Primary key, auto-generated |
 | endpoint_path | text | The URL to deliver webhooks to |
-| secret | varchar | Used for HMAC-SHA256 payload signing |
+| secret | varchar | AES-256-GCM encrypted, used for HMAC-SHA256 payload signing |
 | status | enum | `active` or `inactive` |
 | subscribed_event | text[] | Array of event types to listen for |
 | external_source | text | Label for the webhook source (e.g., "stripe") |
-| user_id | bigint | Foreign key to User |
+| user_id | uuid | Foreign key to User |
 | created_at | timestamp | Auto-set |
 | updated_at | timestamp | Auto-set |
 
@@ -100,7 +103,7 @@ External Service (Stripe, GitHub, etc.)
 
 | Field | Type | Details |
 |-------|------|---------|
-| id | bigint | Primary key, auto-generated |
+| id | uuid | Primary key, auto-generated |
 | status | enum | `pending`, `delivered`, `failed`, `dead` |
 | response_code | varchar | HTTP status code from endpoint |
 | response_body | text | Response body from endpoint |
@@ -108,7 +111,7 @@ External Service (Stripe, GitHub, etc.)
 | next_retry | timestamp | When to retry next (with timezone) |
 | payload | text | JSON stringified webhook payload |
 | event_type | varchar | The event type that triggered this delivery |
-| endpoint_id | bigint | Foreign key to Endpoint |
+| endpoint_id | uuid | Foreign key to Endpoint |
 | created_at | timestamp | Auto-set |
 | updated_at | timestamp | Auto-set |
 
@@ -122,14 +125,13 @@ External Service (Stripe, GitHub, etc.)
 | GET | `/api/auth/login` | None | Login, receive JWT |
 | PUT | `/api/auth/api-key` | JWT | Generate API key (shown once) |
 
-### Endpoints (coming soon)
+### Endpoints
 
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
 | POST | `/api/endpoints` | API Key | Register a new endpoint |
 | GET | `/api/endpoints` | API Key | List all endpoints |
-| GET | `/api/endpoints/:id` | API Key | Get endpoint details |
-| PATCH | `/api/endpoints/:id` | API Key | Update endpoint |
+| PUT | `/api/endpoints/:id` | API Key | Update endpoint |
 | DELETE | `/api/endpoints/:id` | API Key | Delete endpoint |
 
 ### Events (coming soon)
@@ -157,17 +159,17 @@ External Service (Stripe, GitHub, etc.)
 ```bash
 # Clone
 git clone https://github.com/Verifieddanny/conduit-engine.git
-cd webhook-delivery-engine
+cd conduit-engine
 
 # Install dependencies
 bun install
 
 # Start PostgreSQL
-docker run --name webhook-relay -e POSTGRES_DB=webhook-relay-db -e POSTGRES_USER=webhook-admin -e POSTGRES_PASSWORD=yourpassword -p 5433:5432 -d postgres:alpine
+docker run --name conduit-db -e POSTGRES_DB=conduit-db -e POSTGRES_USER=conduit-admin -e POSTGRES_PASSWORD=yourpassword -p 5433:5432 -d postgres:alpine
 
 # Set up environment variables
 cp .env.example .env
-# Edit .env with your database URL and JWT secret
+# Edit .env with your database URL, JWT secret, and encryption key
 
 # Push schema
 bunx drizzle-kit push
@@ -181,6 +183,7 @@ bun dev
 ```
 DATABASE_URL=postgresql://<username>:<yourpassword>@localhost:5433/<db_name>
 SECRET=your-jwt-secret
+ENCRYPTION_KEY=your-32-byte-hex-key
 PORT=8080
 ```
 
@@ -189,7 +192,8 @@ PORT=8080
 ```
 src/
 ├── controller/
-│   └── auth.ts          # Register, login, API key generation
+│   ├── auth.ts          # Register, login, API key generation
+│   └── endpoint.ts      # Endpoint CRUD operations
 ├── db/
 │   ├── index.ts         # Database connection (pg Pool + Drizzle)
 │   └── schema.ts        # Drizzle schema definitions
@@ -197,9 +201,15 @@ src/
 │   ├── has-api-key.ts   # API key authentication
 │   └── is-auth.ts       # JWT authentication
 ├── routes/
-│   └── auth.ts          # Auth route definitions
+│   ├── auth.ts          # Auth route definitions
+│   └── endpoint.ts      # Endpoint route definitions
+├── service/
+│   └── encryption.ts    # AES-256-GCM encrypt/decrypt
 ├── shared/
 │   └── types.ts         # TypeScript interfaces
+├── validation/
+│   ├── auth.ts          # Auth input validation
+│   └── endpoint.ts      # Endpoint input validation
 └── index.ts             # Express app entry point
 ```
 
@@ -207,7 +217,7 @@ src/
 
 **Danny (DevDanny)** -- [@dannyclassi_c](https://x.com/dannyclassi_c)
 
-## LIiscence
+## License
 
 MIT
 

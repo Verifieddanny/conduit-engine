@@ -4,7 +4,6 @@ import type { CustomError, AuthRequest, User } from "../shared/types.js";
 import { db } from "../db/index.js";
 import { userTable } from "../db/schema.js";
 import { eq } from "drizzle-orm";
-import bcrypt from "bcryptjs";
 
 export const hasApiKey = async (req: AuthRequest, res: Response, next: NextFunction) => {
     const authHeader = req.get("Authorization");

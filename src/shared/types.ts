@@ -19,11 +19,24 @@ export interface UserPayload extends JwtPayload {
 }
 
 export interface User {
-  id: number;
+  id: string;
   username: string;
   email: string;
   password: string;
   apiKey: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+
+export interface Endpoint {
+    status: "active" | "inactive";
+    id: string;
+    createdAt: Date;
+    updatedAt: Date;
+    endpointPath: string;
+    secret: string;
+    subscribedEvent: string[];
+    externalSource: string;
+    userId: string;
 }
