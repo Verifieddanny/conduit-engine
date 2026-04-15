@@ -1,10 +1,12 @@
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import { pool } from './db';
-import type { CustomError } from './shared/types';
+import type { BufferRequest, CustomError } from './shared/types';
 import AuthRouter from './routes/auth';
 import { hasApiKey } from './middleware/has-api-key';
 import EndpointRouter from './routes/endpoint';
+import InboundRouter from './routes/inbound';
+import Simulator from './routes/simulator';
 
 
 const app = express();
@@ -28,7 +30,13 @@ app.get('/api', (req: Request, res: Response) => {
 });
 
 app.use('/api/auth', AuthRouter);
-app.use('/api/endpoints', hasApiKey, EndpointRouter)
+app.use('/api/endpoints', hasApiKey, EndpointRouter);
+app.use('/api/inbound', express.json({
+    verify: (req: BufferRequest, _res, buf) => {
+        req.rawBody = buf;
+    }
+}), InboundRouter)
+app.use('/api/simulator', hasApiKey, Simulator);
 
 
 const startServer = async () => {

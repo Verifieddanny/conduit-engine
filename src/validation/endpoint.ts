@@ -1,7 +1,4 @@
 import { body } from "express-validator";
-import { db } from "../db";
-import { userTable } from "../db/schema";
-import { eq } from "drizzle-orm";
 
 export const createEndpointValidation = [
     body("url")
@@ -16,7 +13,12 @@ export const createEndpointValidation = [
     body("external_source")
         .trim()
         .notEmpty()
-        .withMessage("Input external source")
+        .withMessage("Input external source"),
+    body("secret")
+        .optional()
+        .trim()
+        .notEmpty()
+        .withMessage("Input a status")
 
 ]
 

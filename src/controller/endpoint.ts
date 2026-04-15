@@ -19,9 +19,13 @@ export const createEndpoint = async (req: AuthRequest, res: Response, next: Next
         const url = req.body.url;
         const subscribedEvents = req.body.subscribed_event as string; //seperated by a ','
         const externalSource = req.body.external_source as string;
+        let secret = req.body.secret;
         const subscribedEventsArray = subscribedEvents.split(",");
 
-        const secret = crypto.randomBytes(32).toString('hex');
+
+        if (!secret) {
+            secret = crypto.randomBytes(32).toString('hex');
+        }
 
         const encryptedSecret = encrypt(secret);
 
@@ -32,6 +36,12 @@ export const createEndpoint = async (req: AuthRequest, res: Response, next: Next
             externalSource,
             userId: user.id
         }).returning()
+
+        if (!newEndpoint) {
+            const error: CustomError = new Error("failed to create endpoint");
+            error.statusCode = 500;
+            throw error;
+        }
 
         res.status(201).json({
             endpoint: { ...newEndpoint, secret } as Endpoint,

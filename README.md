@@ -14,12 +14,13 @@ External services (Stripe, GitHub, Paystack, or any custom source) send webhook 
 External Service (Stripe, GitHub, etc.)
         |
         v
-    Conduit Relay
+    Conduit Relay (/api/inbound/:endpointId)
         |
+        ├── Auto-detects source via request headers
+        ├── Verifies webhook signature (HMAC)
         ├── Stores event to PostgreSQL (write-ahead persistence)
-        ├── Looks up subscribed endpoints
-        ├── Creates delivery record per endpoint
-        └── Pushes to Redis queue
+        ├── Creates callback record per subscribed endpoint
+        └── Pushes to Redis queue (coming soon)
                 |
                 v
         BullMQ Worker (background process)
@@ -38,6 +39,18 @@ External Service (Stripe, GitHub, etc.)
                         └── After 5 failures → Dead letter queue
 ```
 
+## Supported Webhook Sources
+
+Conduit auto-detects the external source by inspecting request headers. No configuration needed -- just point your webhook URL at Conduit.
+
+| Source | Signature Header | Algorithm | Replay Protection |
+|--------|-----------------|-----------|-------------------|
+| GitHub | `x-hub-signature-256` | HMAC-SHA256 (hex) | No |
+| Stripe | `stripe-signature` | HMAC-SHA256 (hex) | Yes (5min window) |
+| Paystack | `x-paystack-signature` | HMAC-SHA512 (hex) | No |
+| Slack | `x-slack-signature` | HMAC-SHA256 (hex) | Yes (5min window) |
+| Shopify | `x-shopify-hmac-sha256` | HMAC-SHA256 (base64) | No |
+
 ## Tech Stack
 
 - **Runtime:** Bun
@@ -48,7 +61,7 @@ External Service (Stripe, GitHub, etc.)
 - **Queue:** Redis + BullMQ (coming soon)
 - **Auth:** JWT (session) + SHA-256 hashed API keys (programmatic access)
 - **Encryption:** AES-256-GCM (endpoint secrets)
-- **Payload Signing:** HMAC-SHA256
+- **Signature Verification:** Source-specific HMAC verification with raw body buffer
 - **Validation:** express-validator
 
 ## Current Progress
@@ -61,14 +74,17 @@ External Service (Stripe, GitHub, etc.)
 - [x] API key authentication middleware
 - [x] AES-256-GCM encryption service (for endpoint secrets)
 - [x] Endpoint CRUD (create, list, update, delete with ownership verification)
-- [ ] Inbound event receiver
+- [x] Inbound event receiver with auto-detection of 5 webhook sources
+- [x] Source-specific signature verification (GitHub, Stripe, Paystack, Slack, Shopify)
+- [x] Raw body buffer capture for accurate signature verification
+- [x] Replay attack detection (Stripe, Slack)
+- [x] Event simulator for testing (API key authenticated, ownership verified)
 - [ ] Redis + BullMQ integration
 - [ ] Background worker for delivery
 - [ ] Retry logic with exponential backoff + jitter
-- [ ] HMAC-SHA256 payload signing
+- [ ] HMAC-SHA256 payload signing for outbound delivery
 - [ ] Delivery logs and analytics
 - [ ] Dead letter queue management
-- [ ] Event simulator for testing
 - [ ] Dashboard frontend
 
 ## Database Schema
@@ -91,10 +107,10 @@ External Service (Stripe, GitHub, etc.)
 |-------|------|---------|
 | id | uuid | Primary key, auto-generated |
 | endpoint_path | text | The URL to deliver webhooks to |
-| secret | varchar | AES-256-GCM encrypted, used for HMAC-SHA256 payload signing |
+| secret | varchar | AES-256-GCM encrypted, used for signature verification |
 | status | enum | `active` or `inactive` |
 | subscribed_event | text[] | Array of event types to listen for |
-| external_source | text | Label for the webhook source (e.g., "stripe") |
+| external_source | text | Label for the webhook source (e.g., "stripe", "github", "simulator") |
 | user_id | uuid | Foreign key to User |
 | created_at | timestamp | Auto-set |
 | updated_at | timestamp | Auto-set |
@@ -134,11 +150,17 @@ External Service (Stripe, GitHub, etc.)
 | PUT | `/api/endpoints/:id` | API Key | Update endpoint |
 | DELETE | `/api/endpoints/:id` | API Key | Delete endpoint |
 
-### Events (coming soon)
+### Inbound Events
 
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
-| POST | `/api/inbound/:endpointId` | None | Receive webhook from external source |
+| POST | `/api/inbound/:endpointId` | Webhook Signature | Receive webhook from external source |
+
+### Simulator
+
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/simulator/:endpointId` | API Key | Simulate a webhook event for testing |
 
 ### Deliveries (coming soon)
 
@@ -193,7 +215,9 @@ PORT=8080
 src/
 ├── controller/
 │   ├── auth.ts          # Register, login, API key generation
-│   └── endpoint.ts      # Endpoint CRUD operations
+│   ├── endpoint.ts      # Endpoint CRUD operations
+│   ├── inbound.ts       # Inbound webhook handler (auto-detect source)
+│   └── simulator.ts     # Event simulator for testing
 ├── db/
 │   ├── index.ts         # Database connection (pg Pool + Drizzle)
 │   └── schema.ts        # Drizzle schema definitions
@@ -202,14 +226,18 @@ src/
 │   └── is-auth.ts       # JWT authentication
 ├── routes/
 │   ├── auth.ts          # Auth route definitions
-│   └── endpoint.ts      # Endpoint route definitions
+│   ├── endpoint.ts      # Endpoint route definitions
+│   ├── inbound.ts       # Inbound webhook routes
+│   └── simulator.ts     # Simulator routes
 ├── service/
-│   └── encryption.ts    # AES-256-GCM encrypt/decrypt
+│   ├── encryption.ts    # AES-256-GCM encrypt/decrypt
+│   └── verifyWebhook.ts # Source-specific signature verification
 ├── shared/
 │   └── types.ts         # TypeScript interfaces
 ├── validation/
 │   ├── auth.ts          # Auth input validation
-│   └── endpoint.ts      # Endpoint input validation
+│   ├── endpoint.ts      # Endpoint input validation
+│   └── simulator.ts     # Simulator input validation
 └── index.ts             # Express app entry point
 ```
 
