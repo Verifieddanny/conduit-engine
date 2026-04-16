@@ -1,10 +1,11 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import type {Response } from "express";
+import type { Response } from "express";
 import type { BufferRequest, Callback, CustomError, Endpoint } from "../shared/types";
 import { decrypt } from "./encryption";
 import { db } from "../db";
 import { callbackTable, endpointTable } from "../db/schema";
 import { and, eq, sql } from "drizzle-orm";
+import { addDeliveryJob } from "../queue/delivery";
 
 
 export const githubSource = async (req: BufferRequest, res: Response, endpointId: string): Promise<Callback | null> => {
@@ -57,6 +58,8 @@ export const githubSource = async (req: BufferRequest, res: Response, endpointId
         error.statusCode = 500;
         throw error;
     }
+
+    await addDeliveryJob(newCallback.id);
 
     return newCallback;
 }
@@ -130,6 +133,8 @@ export const stripeSource = async (req: BufferRequest, res: Response, endpointId
         throw error;
     }
 
+    await addDeliveryJob(newCallback.id);
+
     return newCallback;
 }
 
@@ -184,6 +189,8 @@ export const paystackSource = async (req: BufferRequest, res: Response, endpoint
         error.statusCode = 500;
         throw error;
     }
+
+    await addDeliveryJob(newCallback.id);
 
     return newCallback;
 }
@@ -249,6 +256,8 @@ export const slackSource = async (req: BufferRequest, res: Response, endpointId:
         throw error;
     }
 
+    await addDeliveryJob(newCallback.id);
+
     return newCallback;
 }
 
@@ -303,6 +312,8 @@ export const shopifySource = async (req: BufferRequest, res: Response, endpointI
         error.statusCode = 500;
         throw error;
     }
+
+    await addDeliveryJob(newCallback.id);
 
     return newCallback;
 }
