@@ -4,6 +4,7 @@ import { db } from "../db";
 import { callbackTable, endpointTable } from "../db/schema";
 import { validationResult } from "express-validator";
 import { and, eq, sql } from "drizzle-orm";
+import { addDeliveryJob } from "../queue/delivery";
 
 export const handleSimulator = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
@@ -26,11 +27,11 @@ export const handleSimulator = async (req: AuthRequest, res: Response, next: Nex
         const endpoint = await db.query.endpointTable.findFirst({
             where: and(
                 eq(endpointTable.id, endpointId),
-                sql`${endpointTable.subscribedEvent} @> ${JSON.stringify([eventType])}::jsonb`
+                sql`${endpointTable.subscribedEvent} @> ARRAY[${eventType}]::text[]`
             )
         });
 
-        if(!endpoint || endpoint.userId !== user.id){
+        if (!endpoint || endpoint.userId !== user.id) {
             const error: CustomError = new Error("Not Authorized");
             error.statusCode = 403;
             throw error;
@@ -42,6 +43,13 @@ export const handleSimulator = async (req: AuthRequest, res: Response, next: Nex
             eventType: eventType,
             endpointId: endpointId
         }).returning()
+
+        if (!newCallback) {
+            const error: CustomError = new Error("failed to create callback");
+            error.statusCode = 500;
+            throw error;
+        }
+        await addDeliveryJob(newCallback.id);
 
         res.status(200).send("Accepted");
 

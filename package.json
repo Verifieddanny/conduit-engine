@@ -7,6 +7,7 @@
     "dev": "bun --watch src/index.ts",
     "build": "tsc",
     "start": "bun src/index.ts",
+    "worker": "bun --watch src/worker.ts",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
@@ -26,11 +27,13 @@
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "bullmq": "^5.74.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "express-validator": "^7.3.2",
+    "ioredis": "^5.10.1",
     "nanoid": "^5.1.7",
     "pg": "^8.20.0"
   }

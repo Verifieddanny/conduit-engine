@@ -1,4 +1,4 @@
-import express, { type Request, type Response } from 'express';
+import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import { pool } from './db';
 import type { BufferRequest, CustomError } from './shared/types';
@@ -16,7 +16,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use(
-    (error: CustomError, _req: Request, res: Response) => {
+    (error: CustomError, _req: Request, res: Response, _next: NextFunction) => {
         const statusCode = error.statusCode || 500;
         const message = error.message;
         const data = error.data;

@@ -9,7 +9,8 @@ const AuthRouter = Router();
 
 AuthRouter.post("/register", SignUpValidation, signup);
 
-AuthRouter.get("/login", loginValidation, login);
+AuthRouter.post("/login", loginValidation, login);
+
 
 AuthRouter.put("/api-key", isAuth, getApiKey)
 
