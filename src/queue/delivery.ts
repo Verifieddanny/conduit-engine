@@ -11,7 +11,9 @@ export const deliveryQueue = new Queue("delivery", {
     connection: redisConnection
 })
 
-export const addDeliveryJob = async (callbackId: string) => {
-    return await deliveryQueue.add("deliver-webhook", { callbackId })
+export const addDeliveryJob = async (callbackId: string, delayInMilliseconds?: number) => {
+    return await deliveryQueue.add("deliver-webhook", { callbackId }, {
+        delay: delayInMilliseconds
+    })
 }
 
