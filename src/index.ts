@@ -7,6 +7,7 @@ import { hasApiKey } from './middleware/has-api-key';
 import EndpointRouter from './routes/endpoint';
 import InboundRouter from './routes/inbound';
 import Simulator from './routes/simulator';
+import DeliveryRouter from './routes/deliveries';
 
 
 const app = express();
@@ -37,7 +38,7 @@ app.use('/api/inbound', express.json({
     }
 }), InboundRouter)
 app.use('/api/simulator', hasApiKey, Simulator);
-
+app.use('/api/deliveries', hasApiKey, DeliveryRouter);
 
 const startServer = async () => {
     try {

@@ -1,9 +1,12 @@
 import { Worker } from "bullmq";
-import { redisConnection } from "./queue/delivery";
+import { addDeliveryJob, redisConnection } from "./queue/delivery";
 import { db } from "./db";
-import { callbackTable, endpointTable } from "./db/schema";
+import { callbackTable } from "./db/schema";
 import { eq } from "drizzle-orm";
+import { createHmac } from "node:crypto";
+import { decrypt } from "./service/encryption";
 
+const RETRY_DELAYS = [10, 30, 120, 600, 3600]; // seconds
 
 const worker = new Worker(
     "delivery",
@@ -30,10 +33,15 @@ const worker = new Worker(
         }
 
         try {
+            const bodyString = callback.payload || "";
+            const hmac = createHmac("sha256", decrypt(callback.endpoint.secret));
+            const signature = "cdtsig_sha256=" + hmac.update(bodyString).digest("hex");
+
             const response = await fetch(callback.endpoint.endpointPath, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
+                    "X-Conduit-Signature": signature,
                     "X-Conduit-Event": callback.eventType,
                     "X-Conduit-Callback-Id": callback.id,
                 },
@@ -54,30 +62,72 @@ const worker = new Worker(
                     .where(eq(callbackTable.id, callbackId))
                 console.log(`[Worker] Delivered: ${callbackId} (${response.status})`);
             } else {
+                if (callback.attempts >= RETRY_DELAYS.length) {
+                    await db.update(callbackTable)
+                        .set({
+                            status: "dead",
+                            responseCode: response.status
+                                .toString(),
+                            responseBody: responseBody.slice(0, 1000),
+                        })
+                        .where(eq(callbackTable.id, callbackId))
+
+                    console.log(`[Worker] Failed: ${callbackId} (${response.status})`);
+                    return
+                }
+
+                const baseDelay = (RETRY_DELAYS[(callback.attempts || 0)] || 0) * 1000;
+                const jitter = Math.random() * baseDelay
+                const totalDelay = baseDelay + jitter;
+
+                addDeliveryJob(callbackId, totalDelay)
+
                 await db.update(callbackTable)
                     .set({
                         status: "failed",
                         responseCode: response.status
                             .toString(),
                         responseBody: responseBody.slice(0, 1000),
-                        attempts: (callback.attempts || 0) + 1
+                        attempts: (callback.attempts || 0) + 1,
+                        nextRetry: new Date(Date.now() + totalDelay).toISOString()
                     })
                     .where(eq(callbackTable.id, callbackId))
 
-                console.log(`[Worker] Failed: ${callbackId} (${response.status})`);
-
+                console.log(`[Worker] Failed: ${callbackId} (${response.status}) RETRYING in ${totalDelay / 60000} mins`);
             }
         } catch (error) {
             const err = error as Error;
+            if (callback.attempts >= RETRY_DELAYS.length) {
+                await db.update(callbackTable)
+                    .set({
+                        status: "dead",
+                        responseCode: 500
+                            .toString(),
+                        responseBody: err.message,
+                    })
+                    .where(eq(callbackTable.id, callbackId))
+
+                console.log(`[Worker] Error: ${callbackId} — ${err.message}`);
+                return
+            }
+            const baseDelay = (RETRY_DELAYS[(callback.attempts || 0)] || 0) * 1000;
+            const jitter = Math.random() * baseDelay
+            const totalDelay = baseDelay + jitter;
+
+            addDeliveryJob(callbackId, totalDelay)
+
             await db.update(callbackTable)
                 .set({
                     status: "failed",
+                    responseCode: 500
+                        .toString(),
                     responseBody: err.message,
                     attempts: (callback.attempts || 0) + 1,
+                    nextRetry: new Date(Date.now() + totalDelay).toISOString()
                 })
-                .where(eq(callbackTable.id, callbackId));
+                .where(eq(callbackTable.id, callbackId))
 
-            console.log(`[Worker] Error: ${callbackId} — ${err.message}`);
+            console.log(`[Worker] Error: ${callbackId} — ${err.message} RETRYING in ${totalDelay / 60000} mins`);
         }
     },
     {
