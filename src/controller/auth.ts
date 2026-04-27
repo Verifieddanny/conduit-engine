@@ -111,7 +111,7 @@ export const login = async (
 
         res
             .status(200)
-            .json({ auth_token: token, userId: loadedUser.id.toString() });
+            .json({ auth_token: token, userId: loadedUser.id.toString(), email: loadedUser.email, username: loadedUser.username });
     } catch (error) {
         const err = error as CustomError;
         if (!err.statusCode) {

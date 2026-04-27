@@ -24,7 +24,7 @@ export const isAuth = (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     decodedToken = jwt.verify(
       token,
-      process.env.SECRETE_KEY!,
+      process.env.SECRET_KEY!,
     ) as unknown as UserPayload;
   } catch (err) {
     const error = err as CustomError;

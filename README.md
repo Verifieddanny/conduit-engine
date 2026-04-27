@@ -66,7 +66,7 @@ Conduit auto-detects the external source by inspecting request headers. No confi
 - **Database:** PostgreSQL (via Docker)
 - **ORM:** Drizzle ORM
 - **Queue:** Redis + BullMQ
-- **Auth:** JWT (session) + SHA-256 hashed API keys (programmatic access)
+- **Auth:** JWT (dashboard) + SHA-256 hashed API keys (programmatic access)
 - **Encryption:** AES-256-GCM (endpoint secrets)
 - **Outbound Signing:** HMAC-SHA256 with `cdtsig_sha256=` prefix
 - **Signature Verification:** Source-specific HMAC verification with raw body buffer
@@ -81,7 +81,7 @@ Conduit auto-detects the external source by inspecting request headers. No confi
 - [x] API key generation with SHA-256 hashing (`cdt_` prefixed keys)
 - [x] API key authentication middleware
 - [x] AES-256-GCM encryption service (for endpoint secrets)
-- [x] Endpoint CRUD (create, list, update, delete with ownership verification)
+- [x] Endpoint CRUD (create, list, get by ID, update, delete with ownership verification)
 - [x] Inbound event receiver with auto-detection of 5 webhook sources
 - [x] Source-specific signature verification (GitHub, Stripe, Paystack, Slack, Shopify)
 - [x] Raw body buffer capture for accurate signature verification
@@ -96,12 +96,15 @@ Conduit auto-detects the external source by inspecting request headers. No confi
 - [x] Dead letter queue (status: "dead" after 5 failures)
 - [x] Delivery logs (list callbacks per endpoint)
 - [x] Manual replay for failed/dead deliveries
+- [x] Dashboard stats endpoint (total endpoints, deliveries, success/failure/dead counts)
+- [x] Recent deliveries endpoint (last 10 across all endpoints)
+- [x] Dual auth routing (JWT for dashboard, API key for programmatic access)
 - [ ] Status filtering on delivery logs
-- [ ] Dashboard frontend
+- [ ] Frontend deployment
 
 ## Database Schema
 
-**User** -- registers and authenticates via API key
+**User** -- registers and authenticates via API key or JWT
 
 | Field | Type | Details |
 |-------|------|---------|
@@ -153,14 +156,25 @@ Conduit auto-detects the external source by inspecting request headers. No confi
 | POST | `/api/auth/login` | None | Login, receive JWT |
 | PUT | `/api/auth/api-key` | JWT | Generate API key (shown once) |
 
-### Endpoints
+### Endpoints (Programmatic — API Key)
 
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
 | POST | `/api/endpoints` | API Key | Register a new endpoint |
-| GET | `/api/endpoints` | API Key | List all endpoints |
+| GET | `/api/endpoints` | API Key | List all endpoints with delivery stats |
+| GET | `/api/endpoints/:id` | API Key | Get endpoint with delivery stats |
 | PUT | `/api/endpoints/:id` | API Key | Update endpoint |
 | DELETE | `/api/endpoints/:id` | API Key | Delete endpoint |
+
+### Endpoints (Dashboard — JWT)
+
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/dashboard/endpoints` | JWT | Register a new endpoint |
+| GET | `/api/dashboard/endpoints` | JWT | List all endpoints with delivery stats |
+| GET | `/api/dashboard/endpoints/:id` | JWT | Get endpoint with delivery stats |
+| PUT | `/api/dashboard/endpoints/:id` | JWT | Update endpoint |
+| DELETE | `/api/dashboard/endpoints/:id` | JWT | Delete endpoint |
 
 ### Inbound Events
 
@@ -172,14 +186,26 @@ Conduit auto-detects the external source by inspecting request headers. No confi
 
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
-| POST | `/api/simulator/:endpointId` | API Key | Simulate a webhook event for testing |
+| POST | `/api/simulator/:endpointId` | API Key | Simulate a webhook event (programmatic) |
+| POST | `/api/dashboard/simulator/:endpointId` | JWT | Simulate a webhook event (dashboard) |
 
-### Deliveries
+### Deliveries (Programmatic — API Key)
 
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
+| GET | `/api/deliveries/stats` | API Key | Aggregate delivery stats across all endpoints |
+| GET | `/api/deliveries/recent` | API Key | Last 10 deliveries across all endpoints |
 | GET | `/api/deliveries/:endpointId` | API Key | List delivery logs for an endpoint |
 | POST | `/api/deliveries/:callbackId/replay` | API Key | Replay a failed or dead delivery |
+
+### Deliveries (Dashboard — JWT)
+
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/api/dashboard/deliveries/stats` | JWT | Aggregate delivery stats across all endpoints |
+| GET | `/api/dashboard/deliveries/recent` | JWT | Last 10 deliveries across all endpoints |
+| GET | `/api/dashboard/deliveries/:endpointId` | JWT | List delivery logs for an endpoint |
+| POST | `/api/dashboard/deliveries/:callbackId/replay` | JWT | Replay a failed or dead delivery |
 
 ## Delivery Headers
 
@@ -298,8 +324,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 src/
 ├── controller/
 │   ├── auth.ts              # Register, login, API key generation
-│   ├── deliveries.ts        # Delivery logs + replay
-│   ├── endpoint.ts          # Endpoint CRUD operations
+│   ├── deliveries.ts        # Delivery logs, replay, stats, recent deliveries
+│   ├── endpoint.ts          # Endpoint CRUD (create, list, get, update, delete)
 │   ├── inbound.ts           # Inbound webhook handler (auto-detect source)
 │   └── simulator.ts         # Event simulator for testing
 ├── db/
@@ -312,7 +338,7 @@ src/
 │   └── delivery.ts          # BullMQ queue setup + Redis connection
 ├── routes/
 │   ├── auth.ts              # Auth route definitions
-│   ├── deliveries.ts        # Delivery log + replay routes
+│   ├── deliveries.ts        # Delivery log, replay, stats, recent routes
 │   ├── endpoint.ts          # Endpoint route definitions
 │   ├── inbound.ts           # Inbound webhook routes
 │   └── simulator.ts         # Simulator routes
@@ -332,6 +358,8 @@ src/
 ## Architecture Notes
 
 **Producer-Consumer Pattern.** The API server and worker are completely independent processes that communicate only through Redis. The API server pushes jobs and returns immediately. The worker pulls jobs and delivers webhooks. Either can crash, restart, or scale independently without affecting the other.
+
+**Dual Auth Routing.** The same controllers serve both programmatic (API key) and dashboard (JWT) consumers. Routes are mounted twice under different prefixes with different auth middleware — `/api/endpoints` uses `hasApiKey`, `/api/dashboard/endpoints` uses `isAuth`. No code duplication.
 
 **Write-ahead persistence.** Every inbound event is written to PostgreSQL before being queued. If Redis is unavailable or the worker is down, events are still recorded and can be replayed.
 

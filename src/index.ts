@@ -8,6 +8,7 @@ import EndpointRouter from './routes/endpoint';
 import InboundRouter from './routes/inbound';
 import Simulator from './routes/simulator';
 import DeliveryRouter from './routes/deliveries';
+import { isAuth } from './middleware/is-auth';
 
 
 const app = express();
@@ -39,6 +40,11 @@ app.use('/api/inbound', express.json({
 }), InboundRouter)
 app.use('/api/simulator', hasApiKey, Simulator);
 app.use('/api/deliveries', hasApiKey, DeliveryRouter);
+
+app.use('/api/dashboard/endpoints', isAuth, EndpointRouter);
+app.use('/api/dashboard/deliveries', isAuth, DeliveryRouter);
+app.use('/api/dashboard/simulator', isAuth, Simulator);
+
 
 const startServer = async () => {
     try {
