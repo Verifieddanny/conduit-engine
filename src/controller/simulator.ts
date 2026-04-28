@@ -21,7 +21,7 @@ export const handleSimulator = async (req: AuthRequest, res: Response, next: Nex
         const userId = req.userId;
 
 
-         if (!user && !userId) {
+        if (!user && !userId) {
             const error: CustomError = new Error("User not found or unauthenticated");
             error.statusCode = 401;
             throw error;
@@ -63,7 +63,15 @@ export const handleSimulator = async (req: AuthRequest, res: Response, next: Nex
         }
         await addDeliveryJob(newCallback.id);
 
-        res.status(200).send("Accepted");
+        res.status(200).json({
+            callbackId: newCallback.id,
+            status: newCallback.status,
+            response: {
+                code: 200,
+                body: "Accepted"
+            }
+        });
+
 
 
     } catch (error) {

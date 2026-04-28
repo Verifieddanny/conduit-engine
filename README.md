@@ -63,9 +63,9 @@ Conduit auto-detects the external source by inspecting request headers. No confi
 - **Runtime:** Bun
 - **Framework:** Express 5
 - **Language:** TypeScript
-- **Database:** PostgreSQL (via Docker)
+- **Database:** PostgreSQL (via Docker Compose)
 - **ORM:** Drizzle ORM
-- **Queue:** Redis + BullMQ
+- **Queue:** Redis + BullMQ (via Docker Compose)
 - **Auth:** JWT (dashboard) + SHA-256 hashed API keys (programmatic access)
 - **Encryption:** AES-256-GCM (endpoint secrets)
 - **Outbound Signing:** HMAC-SHA256 with `cdtsig_sha256=` prefix
@@ -76,17 +76,22 @@ Conduit auto-detects the external source by inspecting request headers. No confi
 
 - [x] Project setup (Bun + TypeScript + Express 5)
 - [x] PostgreSQL database with Drizzle ORM schema (UUID primary keys)
+- [x] Docker Compose for local infrastructure (PostgreSQL + Redis)
 - [x] User registration and login (bcrypt + JWT)
+- [x] Login returns `auth_token`, `userId`, `email`, `username`, `has_api_key`
 - [x] Input validation (express-validator)
 - [x] API key generation with SHA-256 hashing (`cdt_` prefixed keys)
 - [x] API key authentication middleware
 - [x] AES-256-GCM encryption service (for endpoint secrets)
 - [x] Endpoint CRUD (create, list, get by ID, update, delete with ownership verification)
+- [x] Endpoint secret update (users can set/change secret after creation for external sources)
 - [x] Inbound event receiver with auto-detection of 5 webhook sources
+- [x] Inbound route mounted before `express.json()` for raw body buffer capture
 - [x] Source-specific signature verification (GitHub, Stripe, Paystack, Slack, Shopify)
 - [x] Raw body buffer capture for accurate signature verification
 - [x] Replay attack detection (Stripe, Slack)
-- [x] Event simulator for testing (API key authenticated, ownership verified)
+- [x] Event simulator for testing (ownership verified)
+- [x] Simulator and inbound return structured response (`callbackId`, `status`, `response`)
 - [x] Redis + BullMQ integration (producer-consumer pattern)
 - [x] Background worker for delivery (separate process, concurrency: 5)
 - [x] Outbound webhook delivery with 10s timeout and custom headers
@@ -99,6 +104,7 @@ Conduit auto-detects the external source by inspecting request headers. No confi
 - [x] Dashboard stats endpoint (total endpoints, deliveries, success/failure/dead counts)
 - [x] Recent deliveries endpoint (last 10 across all endpoints)
 - [x] Dual auth routing (JWT for dashboard, API key for programmatic access)
+- [x] Verified against real Stripe webhooks (sandbox → tunnel → inbound → queue → delivery)
 - [ ] Status filtering on delivery logs
 - [ ] Frontend deployment
 
@@ -153,7 +159,7 @@ Conduit auto-detects the external source by inspecting request headers. No confi
 | Method | Route | Auth | Description |
 |--------|-------|------|-------------|
 | POST | `/api/auth/register` | None | Create account |
-| POST | `/api/auth/login` | None | Login, receive JWT |
+| POST | `/api/auth/login` | None | Login, receive JWT + user metadata + `has_api_key` |
 | PUT | `/api/auth/api-key` | JWT | Generate API key (shown once) |
 
 ### Endpoints (Programmatic — API Key)
@@ -163,7 +169,7 @@ Conduit auto-detects the external source by inspecting request headers. No confi
 | POST | `/api/endpoints` | API Key | Register a new endpoint |
 | GET | `/api/endpoints` | API Key | List all endpoints with delivery stats |
 | GET | `/api/endpoints/:id` | API Key | Get endpoint with delivery stats |
-| PUT | `/api/endpoints/:id` | API Key | Update endpoint |
+| PUT | `/api/endpoints/:id` | API Key | Update endpoint (URL, events, status, secret) |
 | DELETE | `/api/endpoints/:id` | API Key | Delete endpoint |
 
 ### Endpoints (Dashboard — JWT)
@@ -173,7 +179,7 @@ Conduit auto-detects the external source by inspecting request headers. No confi
 | POST | `/api/dashboard/endpoints` | JWT | Register a new endpoint |
 | GET | `/api/dashboard/endpoints` | JWT | List all endpoints with delivery stats |
 | GET | `/api/dashboard/endpoints/:id` | JWT | Get endpoint with delivery stats |
-| PUT | `/api/dashboard/endpoints/:id` | JWT | Update endpoint |
+| PUT | `/api/dashboard/endpoints/:id` | JWT | Update endpoint (URL, events, status, secret) |
 | DELETE | `/api/dashboard/endpoints/:id` | JWT | Delete endpoint |
 
 ### Inbound Events
@@ -257,7 +263,7 @@ Jitter prevents the thundering herd problem — when many failed deliveries all 
 ### Prerequisites
 
 - [Bun](https://bun.sh/) installed
-- Docker (for PostgreSQL and Redis)
+- [Docker](https://docs.docker.com/get-docker/) + Docker Compose
 
 ### Run Locally
 
@@ -269,11 +275,8 @@ cd conduit-engine
 # Install dependencies
 bun install
 
-# Start PostgreSQL
-docker run --name conduit-db -e POSTGRES_DB=conduit-db -e POSTGRES_USER=conduit-admin -e POSTGRES_PASSWORD=yourpassword -p 5433:5432 -d postgres:alpine
-
-# Start Redis
-docker run --name conduit-redis -p 6379:6379 -d redis:alpine
+# Start PostgreSQL and Redis
+docker compose up -d
 
 # Set up environment variables
 cp .env.example .env
@@ -289,21 +292,69 @@ bun dev
 bun worker
 ```
 
+### Docker Compose
+
+The `docker-compose.yml` starts PostgreSQL and Redis for local development:
+
+```yaml
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: conduit-db
+    environment:
+      POSTGRES_DB: conduit-db
+      POSTGRES_USER: conduit-admin
+      POSTGRES_PASSWORD: yourpassword
+    volumes:
+      - conduit-pg-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: conduit-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+volumes:
+  conduit-pg-data:
+```
+
+To reset the database completely: `docker compose down -v` (removes volumes), then `docker compose up -d`.
+
 ### Environment Variables
 
 ```
-DATABASE_URL=postgresql://<username>:<yourpassword>@localhost:5433/<db_name>
+DATABASE_URL=postgresql://conduit-admin:yourpassword@localhost:5433/conduit-db
 SECRET_KEY=your-jwt-secret
-ENCRYPTION_KEY=your-64-char-hex-key  # Must be 32 bytes when decoded from hex
-REDIS_HOST=localhost                  # Optional, defaults to localhost
-REDIS_PORT=6379                       # Optional, defaults to 6379
+ENCRYPT_KEY=your-64-char-hex-key  # Must be 32 bytes when decoded from hex
+REDIS_HOST=localhost              # Optional, defaults to localhost
+REDIS_PORT=6379                   # Optional, defaults to 6379
 PORT=8080
 ```
 
-**Note:** `ENCRYPTION_KEY` must be a 64-character hex string (32 bytes when decoded). Generate one with:
+**Note:** `ENCRYPT_KEY` must be a 64-character hex string (32 bytes when decoded). Generate one with:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+### Testing with External Webhooks
+
+To test with real webhook providers (e.g., Stripe), tunnel your local server:
+
+```bash
+# Start a tunnel to expose port 8080 (using Outray, ngrok, or similar)
+outray http 8080
+
+# In Stripe dashboard (sandbox), create a webhook pointing to:
+# https://<your-tunnel-url>/api/inbound/<your-endpoint-id>
+
+# Or use the Stripe CLI:
+stripe listen --forward-to https://<your-tunnel-url>/api/inbound/<your-endpoint-id>
+stripe trigger payment_intent.succeeded
 ```
 
 ## Scripts
@@ -349,7 +400,7 @@ src/
 │   └── types.ts             # TypeScript interfaces
 ├── validation/
 │   ├── auth.ts              # Auth input validation
-│   ├── endpoint.ts          # Endpoint input validation
+│   ├── endpoint.ts          # Endpoint input validation (supports secret update)
 │   └── simulator.ts         # Simulator input validation
 ├── index.ts                 # API server entry point (producer)
 └── worker.ts                # Background worker entry point (consumer)
@@ -360,6 +411,8 @@ src/
 **Producer-Consumer Pattern.** The API server and worker are completely independent processes that communicate only through Redis. The API server pushes jobs and returns immediately. The worker pulls jobs and delivers webhooks. Either can crash, restart, or scale independently without affecting the other.
 
 **Dual Auth Routing.** The same controllers serve both programmatic (API key) and dashboard (JWT) consumers. Routes are mounted twice under different prefixes with different auth middleware — `/api/endpoints` uses `hasApiKey`, `/api/dashboard/endpoints` uses `isAuth`. No code duplication.
+
+**Inbound Route Ordering.** The `/api/inbound` route is mounted before `express.json()` with a custom `verify` callback that captures the raw request body as a Buffer. This is required for accurate HMAC signature verification — if Express parses the JSON first, the re-serialized body may differ from the original bytes, causing signature mismatches.
 
 **Write-ahead persistence.** Every inbound event is written to PostgreSQL before being queued. If Redis is unavailable or the worker is down, events are still recorded and can be replayed.
 

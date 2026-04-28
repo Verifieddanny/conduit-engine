@@ -15,6 +15,13 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(cors());
+
+app.use('/api/inbound', express.json({
+    verify: (req: BufferRequest, _res, buf) => {
+        req.rawBody = buf;
+    }
+}), InboundRouter)
+
 app.use(express.json());
 
 app.use(
@@ -33,11 +40,6 @@ app.get('/api', (req: Request, res: Response) => {
 
 app.use('/api/auth', AuthRouter);
 app.use('/api/endpoints', hasApiKey, EndpointRouter);
-app.use('/api/inbound', express.json({
-    verify: (req: BufferRequest, _res, buf) => {
-        req.rawBody = buf;
-    }
-}), InboundRouter)
 app.use('/api/simulator', hasApiKey, Simulator);
 app.use('/api/deliveries', hasApiKey, DeliveryRouter);
 

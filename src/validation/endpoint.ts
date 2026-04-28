@@ -40,5 +40,10 @@ export const updateEndpointValidation = [
         .optional()
         .trim()
         .notEmpty()
-        .withMessage("Input a status")
+        .withMessage("Input a status"),
+    body("secret")
+        .optional()
+        .trim()
+        .notEmpty()
+        .withMessage("Input secret update")
 ];

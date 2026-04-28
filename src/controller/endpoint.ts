@@ -62,9 +62,6 @@ export const getEndpoints = async (req: AuthRequest, res: Response, next: NextFu
         const user = req.user;
         const userId = req.userId;
 
-        console.log(user)
-        console.log(userId)
-
 
         if (!user && !userId) {
             const error: CustomError = new Error("user not found");
@@ -210,6 +207,7 @@ export const updateEndpoint = async (req: AuthRequest, res: Response, next: Next
         const url = req.body.url;
         const subscribedEvents = req.body.subscribed_event; //seperated by a ','
         const status = req.body.status as "active" | "inactive";
+        const secret = req.body.secret;
 
         const updateData: Partial<typeof endpointTable.$inferInsert> = {};
 
@@ -218,6 +216,7 @@ export const updateEndpoint = async (req: AuthRequest, res: Response, next: Next
         if (subscribedEvents !== undefined) {
             updateData.subscribedEvent = subscribedEvents.split(",");
         }
+        if(secret !== undefined) updateData.secret = encrypt(secret);
 
         if (Object.keys(updateData).length === 0) {
             const error: CustomError = new Error("No update data provided");

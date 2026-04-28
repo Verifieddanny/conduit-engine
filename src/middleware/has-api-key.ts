@@ -11,7 +11,7 @@ export const hasApiKey = async (req: AuthRequest, res: Response, next: NextFunct
     if (!authHeader) {
         const error = new Error("No API KEY") as CustomError;
         error.statusCode = 401;
-        return next(error);
+        throw error
     }
 
     const token = authHeader.split(" ")[1];
@@ -19,7 +19,7 @@ export const hasApiKey = async (req: AuthRequest, res: Response, next: NextFunct
     if (!token) {
         const error: CustomError = new Error("No API KEY!");
         error.statusCode = 401;
-        return next(error);
+        throw error
     }
 
     let user: User;
@@ -52,7 +52,7 @@ export const hasApiKey = async (req: AuthRequest, res: Response, next: NextFunct
     if (!user) {
         const error = new Error("No API KEY") as CustomError;
         error.statusCode = 401;
-        return next(error);
+        throw error;
     }
 
     req.user = user;

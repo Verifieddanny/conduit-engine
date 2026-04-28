@@ -17,6 +17,7 @@ export const signup = async (req: Request, res: Response, next: NextFunction) =>
             const error: CustomError = new Error("Invalid inputs");
             error.statusCode = 422;
             error.data = errors.array();
+            console.log(error.data)
             throw error;
         }
 
@@ -107,11 +108,11 @@ export const login = async (
             expiresIn: "1h",
         };
 
-        const token = jwt.sign(payload, process.env.SECRETE_KEY!, signOptions);
+        const token = jwt.sign(payload, process.env.SECRET_KEY!, signOptions);
 
         res
             .status(200)
-            .json({ auth_token: token, userId: loadedUser.id.toString(), email: loadedUser.email, username: loadedUser.username });
+            .json({ auth_token: token, userId: loadedUser.id.toString(), email: loadedUser.email, username: loadedUser.username, has_api_key: loadedUser.apiKey });
     } catch (error) {
         const err = error as CustomError;
         if (!err.statusCode) {
