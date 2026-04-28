@@ -18,12 +18,24 @@ export const handleSimulator = async (req: AuthRequest, res: Response, next: Nex
         const endpointId = req.params.endpointId as string || "";
         const eventType = req.body.type;
         const user = req.user;
+        const userId = req.userId;
 
-        if (!endpointId || !user) {
-            const error: CustomError = new Error("Invalid parameter");
+
+        if (!user && !userId) {
+            const error: CustomError = new Error("User not found or unauthenticated");
+            error.statusCode = 401;
+            throw error;
+        }
+
+        if (!endpointId) {
+            const error: CustomError = new Error("Missing endpoint ID");
             error.statusCode = 400;
             throw error;
         }
+
+        const activeUserId = user ? user.id : userId;
+
+
         const endpoint = await db.query.endpointTable.findFirst({
             where: and(
                 eq(endpointTable.id, endpointId),
@@ -31,7 +43,7 @@ export const handleSimulator = async (req: AuthRequest, res: Response, next: Nex
             )
         });
 
-        if (!endpoint || endpoint.userId !== user.id) {
+        if (!endpoint || endpoint.userId !== activeUserId) {
             const error: CustomError = new Error("Not Authorized");
             error.statusCode = 403;
             throw error;
@@ -51,7 +63,15 @@ export const handleSimulator = async (req: AuthRequest, res: Response, next: Nex
         }
         await addDeliveryJob(newCallback.id);
 
-        res.status(200).send("Accepted");
+        res.status(200).json({
+            callbackId: newCallback.id,
+            status: newCallback.status,
+            response: {
+                code: 200,
+                body: "Accepted"
+            }
+        });
+
 
 
     } catch (error) {

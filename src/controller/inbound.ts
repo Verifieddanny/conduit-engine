@@ -35,8 +35,14 @@ export const handleWebhook = async (req: BufferRequest, res: Response, next: Nex
             }
             return;
         }
-        res.status(200).send("Accepted");
-
+         res.status(200).json({
+            callbackId: callback.id,
+            status: callback.status,
+            response: {
+                code: 200,
+                body: "Accepted"
+            }
+        });
     } catch (error) {
         const err = error as CustomError;
         if (!err.statusCode) {

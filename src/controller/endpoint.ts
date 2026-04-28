@@ -9,8 +9,9 @@ import { and, eq } from "drizzle-orm";
 export const createEndpoint = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const user = req.user;
+        const userId = req.userId;
 
-        if (!user) {
+        if (!user && !userId) {
             const error: CustomError = new Error("user not found");
             error.statusCode = 401;
             throw error;
@@ -26,7 +27,7 @@ export const createEndpoint = async (req: AuthRequest, res: Response, next: Next
         if (!secret) {
             secret = crypto.randomBytes(32).toString('hex');
         }
-
+        const activeUserId = user ? user.id : userId;
         const encryptedSecret = encrypt(secret);
 
         const [newEndpoint] = await db.insert(endpointTable).values({
@@ -34,7 +35,7 @@ export const createEndpoint = async (req: AuthRequest, res: Response, next: Next
             secret: encryptedSecret,
             subscribedEvent: subscribedEventsArray,
             externalSource,
-            userId: user.id
+            userId: activeUserId || ""
         }).returning()
 
         if (!newEndpoint) {
@@ -59,15 +60,27 @@ export const createEndpoint = async (req: AuthRequest, res: Response, next: Next
 export const getEndpoints = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const user = req.user;
+        const userId = req.userId;
 
-        if (!user) {
+
+        if (!user && !userId) {
             const error: CustomError = new Error("user not found");
             error.statusCode = 401;
             throw error;
         }
 
+        const activeUserId = user ? user.id : userId || "";
+
         const endpoints = await db.query.endpointTable.findMany({
-            where: eq(endpointTable.userId, user.id)
+            where: eq(endpointTable.userId, activeUserId),
+            with: {
+                callbacks: {
+                    columns: {
+                        status: true
+                    }
+                }
+            }
+
         })
 
         if (!endpoints) {
@@ -76,8 +89,26 @@ export const getEndpoints = async (req: AuthRequest, res: Response, next: NextFu
             throw error;
         }
 
+        const endpointsWithStats = endpoints.map(ep => {
+            const stats = {
+                deliveredCount: 0,
+                failedCount: 0,
+                deadCount: 0
+            };
+
+            ep.callbacks.forEach(cb => {
+                if (cb.status === 'delivered') stats.deliveredCount++;
+                else if (cb.status === 'failed') stats.failedCount++;
+                else if (cb.status === 'dead') stats.deadCount++;
+            });
+
+            const { callbacks, ...endpointData } = ep;
+            return { ...endpointData, ...stats };
+        });
+
+
         res.status(200).json({
-            endpoints
+            endpoints: endpointsWithStats
         })
     } catch (error) {
         const err = error as CustomError;
@@ -87,13 +118,81 @@ export const getEndpoints = async (req: AuthRequest, res: Response, next: NextFu
         next(err);
     }
 }
+export const getEndpoint = async (req: AuthRequest, res: Response, next: NextFunction) => {
+    try {
+        const user = req.user;
+        const userId = req.userId;
+        const endpointId = req.params.id as string;
+
+        if (!user && !userId) {
+            const error: CustomError = new Error("User not found or unauthenticated");
+            error.statusCode = 401;
+            throw error;
+        }
+
+        if (!endpointId) {
+            const error: CustomError = new Error("Missing endpoint ID");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        // 2. Resolve Active ID
+        const activeUserId = user ? user.id : userId!;
+
+        // 3. Fetch Endpoint and Callbacks
+        const endpoint = await db.query.endpointTable.findFirst({
+            where: and(
+                eq(endpointTable.id, endpointId),
+                eq(endpointTable.userId, activeUserId)
+            ),
+            with: {
+                callbacks: {
+                    columns: {
+                        status: true
+                    }
+                }
+            }
+        });
+
+        if (!endpoint) {
+            const error: CustomError = new Error("Endpoint not found");
+            error.statusCode = 404;
+            throw error;
+        }
+
+        // 4. Correct Aggregation (Reduce, not Map)
+        const stats = endpoint.callbacks.reduce((acc, cb) => {
+            if (cb.status === 'delivered') acc.deliveredCount++;
+            else if (cb.status === 'failed') acc.failedCount++;
+            else if (cb.status === 'dead') acc.deadCount++;
+            return acc;
+        }, { deliveredCount: 0, failedCount: 0, deadCount: 0 });
+
+        // 5. Build Response Object
+        // We remove the raw 'callbacks' array from the response to keep it light
+        const { callbacks, ...endpointData } = endpoint;
+
+        res.status(200).json({
+            endpoint: {
+                ...endpointData,
+                stats
+            }
+        });
+        
+    } catch (error) {
+        const err = error as CustomError;
+        err.statusCode = err.statusCode || 500;
+        next(err);
+    }
+}
 
 export const updateEndpoint = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const user = req.user;
+        const userId = req.userId;
         const endpointId = req.params.id as string || "";
 
-        if (!user) {
+        if (!user && !userId) {
             const error: CustomError = new Error("user not found");
             error.statusCode = 401;
             throw error;
@@ -108,6 +207,7 @@ export const updateEndpoint = async (req: AuthRequest, res: Response, next: Next
         const url = req.body.url;
         const subscribedEvents = req.body.subscribed_event; //seperated by a ','
         const status = req.body.status as "active" | "inactive";
+        const secret = req.body.secret;
 
         const updateData: Partial<typeof endpointTable.$inferInsert> = {};
 
@@ -116,6 +216,7 @@ export const updateEndpoint = async (req: AuthRequest, res: Response, next: Next
         if (subscribedEvents !== undefined) {
             updateData.subscribedEvent = subscribedEvents.split(",");
         }
+        if(secret !== undefined) updateData.secret = encrypt(secret);
 
         if (Object.keys(updateData).length === 0) {
             const error: CustomError = new Error("No update data provided");
@@ -123,13 +224,14 @@ export const updateEndpoint = async (req: AuthRequest, res: Response, next: Next
             throw error;
         }
 
+        const activeUserId = user ? user.id : userId || "";
         const [updatedEndpoint] = await db
             .update(endpointTable)
             .set(updateData)
             .where(
                 and(
                     eq(endpointTable.id, endpointId),
-                    eq(endpointTable.userId, user.id)
+                    eq(endpointTable.userId, activeUserId)
                 )
             )
             .returning();
@@ -155,19 +257,23 @@ export const updateEndpoint = async (req: AuthRequest, res: Response, next: Next
 export const deleteEndpoint = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const user = req.user;
+        const userId = req.userId;
+
         const endpointId = req.params.id as string || "";
 
-        if (!user) {
-            const error: CustomError = new Error("user not found");
+         if (!user && !userId) {
+            const error: CustomError = new Error("User not found or unauthenticated");
             error.statusCode = 401;
             throw error;
         }
 
         if (!endpointId) {
-            const error: CustomError = new Error("Invalid parameter");
+            const error: CustomError = new Error("Missing endpoint ID");
             error.statusCode = 400;
             throw error;
         }
+
+        const activeUserId = user ? user.id : userId;
 
         const endpoint = await db.query.endpointTable.findFirst({
             where: eq(endpointTable.id, endpointId),
@@ -179,7 +285,7 @@ export const deleteEndpoint = async (req: AuthRequest, res: Response, next: Next
             throw error;
         }
 
-        if (endpoint.userId !== user.id) {
+        if (endpoint.userId !== activeUserId) {
             const error: CustomError = new Error("Unauthorized");
             error.statusCode = 403;
             throw error;

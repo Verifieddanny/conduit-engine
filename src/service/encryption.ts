@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY!, 'hex'); 
+const ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPT_KEY!, 'hex'); 
 const ALGORITHM = "aes-256-gcm";
 
 export function encrypt(text: string) {

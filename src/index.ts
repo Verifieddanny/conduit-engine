@@ -8,12 +8,20 @@ import EndpointRouter from './routes/endpoint';
 import InboundRouter from './routes/inbound';
 import Simulator from './routes/simulator';
 import DeliveryRouter from './routes/deliveries';
+import { isAuth } from './middleware/is-auth';
 
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(cors());
+
+app.use('/api/inbound', express.json({
+    verify: (req: BufferRequest, _res, buf) => {
+        req.rawBody = buf;
+    }
+}), InboundRouter)
+
 app.use(express.json());
 
 app.use(
@@ -32,13 +40,13 @@ app.get('/api', (req: Request, res: Response) => {
 
 app.use('/api/auth', AuthRouter);
 app.use('/api/endpoints', hasApiKey, EndpointRouter);
-app.use('/api/inbound', express.json({
-    verify: (req: BufferRequest, _res, buf) => {
-        req.rawBody = buf;
-    }
-}), InboundRouter)
 app.use('/api/simulator', hasApiKey, Simulator);
 app.use('/api/deliveries', hasApiKey, DeliveryRouter);
+
+app.use('/api/dashboard/endpoints', isAuth, EndpointRouter);
+app.use('/api/dashboard/deliveries', isAuth, DeliveryRouter);
+app.use('/api/dashboard/simulator', isAuth, Simulator);
+
 
 const startServer = async () => {
     try {
