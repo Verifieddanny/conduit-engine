@@ -4,7 +4,7 @@
 
 # Conduit - Backend
 
-[![Status](https://img.shields.io/badge/status-live-emerald)](http://useshipyard.xyz)
+[![Status](https://img.shields.io/badge/status-live-emerald)](http://api.conduit.useshipyard.xyz)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
 
