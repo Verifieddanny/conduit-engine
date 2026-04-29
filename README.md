@@ -1,4 +1,12 @@
-# Conduit
+<p align="center">
+  <img src="public/favicon.ico" width="80" alt="Shipyard Logo" />
+</p>
+
+# Conduit - Backend
+
+[![Status](https://img.shields.io/badge/status-live-emerald)](http://useshipyard.xyz)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 
 A source-agnostic webhook relay service that receives, stores, and reliably delivers webhook events to registered endpoints with retry logic, payload signing, and full delivery logs.
 

@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: conduit-db
       POSTGRES_USER: conduit-admin
-      POSTGRES_PASSWORD: conduitadmin123
+      POSTGRES_PASSWORD: yourpassword
     volumes:
       - conduit-pg-data:/var/lib/postgresql/data
     ports:
